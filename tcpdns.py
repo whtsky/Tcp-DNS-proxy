@@ -28,12 +28,12 @@ except ImportError:
     print "*** Install gevent to have better performance."
 
 import os
-import sys
 import socket
 import struct
 import threading
 import SocketServer
 import optparse
+
 from pylru import lrucache
 
 DHOSTS = [
@@ -66,7 +66,7 @@ def bytetodomain(s):
 
     03www06google02cn00 => www.google.cn
     """
-    domain = ''
+    domain = []
     i = 0
     length = struct.unpack('!B', s[0:1])[0]
 
@@ -76,9 +76,9 @@ def bytetodomain(s):
         i += length
         length = struct.unpack('!B', s[i:i + 1])[0]
         if length:
-            domain += '.'
+            domain.append('.')
 
-    return domain
+    return "".join(domain)
 
 
 def QueryDNS(server, port, querydata):
@@ -131,7 +131,6 @@ def transfer(querydata, addr, server):
 
     print 'domain:%s, qtype:%x, thread:%d' % \
         (domain, qtype, threading.activeCount())
-    sys.stdout.flush()
 
     response = None
     t_id = querydata[:2]
@@ -192,14 +191,6 @@ def main():
         TIMEOUT = float(options.query_timeout)
     if options.dns_servers:
         DHOSTS = [x.strip() for x in options.dns_servers.split(',')]
-        _HOST = []
-        for host in DHOSTS:
-            if ":" in host:
-                ip, port = host.split(':')
-            else:
-                ip, port = host, DPORT
-            _HOST.append((ip, port))
-        DHOSTS = _HOST
     if options.cache:
         CACHE = lrucache(100)
     if options.local:
@@ -209,11 +200,22 @@ def main():
 
     if os.name == 'nt':
         os.system('title tcpdnsproxy')
+
     print '>> TCP DNS Proxy, https://github.com/henices/Tcp-DNS-proxy'
     print '>> DNS Servers:\n%s' % ('\n'.join(DHOSTS))
     print '>> Query Timeout: %f' % TIMEOUT
     print '>> Enable Cache: %r' % options.cache
     print '>> Listen on: %s:53' % listen_ip
+
+
+    _HOST = []
+    for host in DHOSTS:
+        if ":" in host:
+            ip, port = host.split(':')
+        else:
+            ip, port = host, DPORT
+        _HOST.append((ip, port))
+    DHOSTS = _HOST
 
     print '>> Please wait program init....'
     server = ThreadedUDPServer((listen_ip, 53), ThreadedUDPRequestHandler)
