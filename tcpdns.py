@@ -194,29 +194,24 @@ def main():
     parser.add_option("-t", "--timeout", action="store",
                       dest="query_timeout", default=TIMEOUT,
                       help="DNS query timeout")
-    parser.add_option("-l", "--local", action="store_true",
-                      dest="local", default=True,
-                      help="Only accept local connections")
+    parser.add_option("-l", "--listen", action="store",
+                      dest="listen", default="127.0.0.1",
+                      help="Listen to which ip address")
     parser.add_option("-d", "--daemon", action="store_true",
                       dest="daemon", default=True,
                       help="Run in daemon")
     options, _ = parser.parse_args()
 
-    if options.local:
-        listen_ip = "127.0.0.1"
-    else:
-        listen_ip = "0.0.0.0"
-
     if os.name == 'nt':
         os.system('title tcpdnsproxy')
 
     server = ThreadedUDPServer(
-        (listen_ip, 53),
+        (options.listen, 53),
         hosts=[x.strip() for x in options.dns_servers.split(',')],
         timeout=options.query_timeout,
         cache_size=int(options.cache_size)
     )
-    logger.info("Start listening on {ip}:53".format(ip=listen_ip))
+    logger.info("Start listening on {ip}:53".format(ip=options.listen))
 
     if options.daemon:
         import daemon
