@@ -22,11 +22,11 @@
 #  198.153.194.1  Norton
 
 try:
+    import gevent.monkey
+    gevent.monkey.patch_all()
     from gevent import monkey
-except:
-    print "*** Install gevent will save a lot of CPU time\n"
-else:
-    monkey.patch_all()
+except ImportError:
+    print "*** Install gevent to have better performance."
 
 import os
 import sys
