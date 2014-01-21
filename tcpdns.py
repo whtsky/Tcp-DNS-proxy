@@ -197,6 +197,9 @@ def main():
     parser.add_option("-l", "--local", action="store_true",
                       dest="local", default=True,
                       help="Only accept local connections")
+    parser.add_option("-d", "--daemon", action="store_true",
+                      dest="daemon", default=True,
+                      help="Run in daemon")
     options, _ = parser.parse_args()
 
     if options.local:
@@ -215,8 +218,12 @@ def main():
     )
     logger.info("Start listening on {ip}:53".format(ip=listen_ip))
 
-    server.serve_forever()
-    server.shutdown()
+    if options.daemon:
+        import daemon
+        with daemon.DaemonContext():
+            server.serve_forever()
+    else:
+        server.serve_forever()
 
 if __name__ == "__main__":
     main()
