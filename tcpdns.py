@@ -22,9 +22,8 @@
 #  198.153.194.1  Norton
 
 try:
-    import gevent.monkey
-    gevent.monkey.patch_all()
     from gevent import monkey
+    monkey.patch_all()
 except ImportError:
     print "*** Install gevent to have better performance."
 
@@ -40,11 +39,12 @@ from pylru import lrucache
 DHOSTS = [
     '8.8.8.8', '8.8.4.4', '156.154.70.1', '156.154.71.1',
     '208.67.222.222', '208.67.220.220', '74.207.247.4', '209.244.0.3',
-    '8.26.56.26']
+    '8.26.56.26'
+]
 
 DPORT = 53
 TIMEOUT = 20
-LRUCACHE = None
+CACHE = None
 
 
 def hexdump(src, width=16):
@@ -70,12 +70,12 @@ def bytetodomain(s):
     i = 0
     length = struct.unpack('!B', s[0:1])[0]
 
-    while length != 0:
+    while length:
         i += 1
         domain += s[i:i + length]
         i += length
         length = struct.unpack('!B', s[i:i + 1])[0]
-        if length != 0:
+        if length:
             domain += '.'
 
     return domain
@@ -137,41 +137,26 @@ def transfer(querydata, addr, server):
     t_id = querydata[:2]
     key = querydata[2:].encode('hex')
 
-    if LRUCACHE is not None:
-        try:
-            response = LRUCACHE[key]
-            server.sendto(t_id + response[4:], addr)
-        except KeyError:
-            pass
-
-    if response is not None:
+    if CACHE and key in CACHE:
+        response = CACHE[key]
+        server.sendto(t_id + response[4:], addr)
         return
 
-    for DHOST in DHOSTS:
-        if DHOST.find(':') >= 0:
-            ip, port = DHOST.split(':')
-        else:
-            ip, port = DHOST, DPORT
-
+    for ip, port in DHOSTS:
         response = QueryDNS(ip, port, querydata)
-        if response is None:
-            continue
-
-        if LRUCACHE is not None:
-            LRUCACHE[key] = response
+        if CACHE:
+            CACHE[key] = response
 
         # udp dns packet no length
         server.sendto(response[2:], addr)
-        break
+        return
 
     if response is None:
         print "[ERROR] Tried many times and failed to resolve %s" % domain
 
 
 class ThreadedUDPServer(SocketServer.ThreadingMixIn, SocketServer.UDPServer):
-
-    def __init__(self, s, t):
-        SocketServer.UDPServer.__init__(self, s, t)
+    pass
 
 
 class ThreadedUDPRequestHandler(SocketServer.BaseRequestHandler):
@@ -187,36 +172,56 @@ class ThreadedUDPRequestHandler(SocketServer.BaseRequestHandler):
         transfer(data, addr, socket)
 
 
-if __name__ == "__main__":
+def main():
+    global TIMEOUT, DHOSTS, CACHE
 
     parser = optparse.OptionParser()
     parser.add_option("-c", "--cached", action="store_true",
                       dest="cache", default=False, help="Enable LRU cache")
     parser.add_option("-s", "--servers", action="store", dest="dns_servers",
-                      help="Specifies the DNS server, separated by ',' \
-                      default port 53 (eg. 8.8.8.8: 53, 8.8.4.4: 53)")
+                      help="Specifies the DNS server, separated by ','."
+                      "default port is 53 (eg. 8.8.8.8, 8.8.4.4:53)")
     parser.add_option("-t", "--timeout", action="store",
                       dest="query_timeout", help="DNS query timeout")
+    parser.add_option("-l", "--local", action="store_true",
+                      dest="local", default=True,
+                      help="Only accept local connections")
     options, _ = parser.parse_args()
 
     if options.query_timeout:
         TIMEOUT = float(options.query_timeout)
     if options.dns_servers:
-        DHOSTS = options.dns_servers.strip(" ,").split(',')
+        DHOSTS = [x.strip() for x in options.dns_servers.split(',')]
+        _HOST = []
+        for host in DHOSTS:
+            if ":" in host:
+                ip, port = host.split(':')
+            else:
+                ip, port = host, DPORT
+            _HOST.append((ip, port))
+        DHOSTS = _HOST
     if options.cache:
-        LRUCACHE = lrucache(100)
+        CACHE = lrucache(100)
+    if options.local:
+        listen_ip = "127.0.0.1"
+    else:
+        listen_ip = "0.0.0.0"
 
     if os.name == 'nt':
         os.system('title tcpdnsproxy')
     print '>> TCP DNS Proxy, https://github.com/henices/Tcp-DNS-proxy'
     print '>> DNS Servers:\n%s' % ('\n'.join(DHOSTS))
-    print '>> Query Timeout: %f' % (TIMEOUT)
-    print '>> Enable Cache: %r' % (options.cache)
+    print '>> Query Timeout: %f' % TIMEOUT
+    print '>> Enable Cache: %r' % options.cache
+    print '>> Listen on: %s:53' % listen_ip
 
     print '>> Please wait program init....'
-    server = ThreadedUDPServer(('127.0.0.1', 53), ThreadedUDPRequestHandler)
+    server = ThreadedUDPServer((listen_ip, 53), ThreadedUDPRequestHandler)
     print '>> Init finished!'
     print '>> Now you can set dns server to 127.0.0.1'
 
     server.serve_forever()
     server.shutdown()
+
+if __name__ == "__main__":
+    main()
